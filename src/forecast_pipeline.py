@@ -13,3 +13,7 @@ print("Rows:", df.shape[0], "| Columns:", df.shape[1])
 print("Unique brands:", len(unique_brands))
 print(df.head(10))
 print(df.dtypes)
+
+# --- save a fast-loading copy for every future run ---
+df.to_parquet(r"data\processed\sku_demand_time_series_synthetic.parquet", index=False)
+print("Saved fast-loading copy to data/processed/")

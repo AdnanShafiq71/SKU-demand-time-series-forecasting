@@ -233,3 +233,43 @@ output = future_df[["date", "sku_id", "warehouse_id", "units_sold"]].rename(
 )
 output.to_csv("outputs/forecasts/pen_demand_forecast_12wk.csv", index=False)
 print("Saved forecast for", output[["sku_id", "warehouse_id"]].drop_duplicates().shape[0], "series")
+
+# --- Tidy client-facing summary ---
+
+# how much of each pen is needed in total, across every warehouse, over the next 12 weeks
+total_per_sku = (
+    output.groupby("sku_id", observed=True)["forecast_units"]
+    .sum()
+    .round(0)
+    .astype(int)
+    .reset_index()
+    .rename(columns={"forecast_units": "total_forecast_units_12wk"})
+    .sort_values("total_forecast_units_12wk", ascending=False)
+)
+
+# same thing, but broken down by warehouse too
+per_sku_per_warehouse = (
+    output.groupby(["sku_id", "warehouse_id"], observed=True)["forecast_units"]
+    .sum()
+    .round(0)
+    .astype(int)
+    .reset_index()
+    .rename(columns={"forecast_units": "total_forecast_units_12wk"})
+)
+
+# same data again, but laid out as a grid — one row per pen, one column per warehouse.
+# this is the version that actually reads well for a client
+pivot_grid = per_sku_per_warehouse.pivot(
+    index="sku_id", columns="warehouse_id", values="total_forecast_units_12wk"
+).fillna(0).astype(int)
+pivot_grid["Total"] = pivot_grid.sum(axis=1)
+pivot_grid = pivot_grid.sort_values("Total", ascending=False)
+
+# saving all three views into one excel file, each on its own tab
+with pd.ExcelWriter("outputs/forecasts/pen_demand_summary.xlsx", engine="openpyxl") as writer:
+    total_per_sku.to_excel(writer, sheet_name="Total per SKU", index=False)
+    per_sku_per_warehouse.to_excel(writer, sheet_name="Per SKU per Warehouse", index=False)
+    pivot_grid.to_excel(writer, sheet_name="SKU x Warehouse Grid")
+
+print("Saved client summary to outputs/forecasts/pen_demand_summary.xlsx")
+print(total_per_sku.head(10))

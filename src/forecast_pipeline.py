@@ -19,3 +19,25 @@ print(df.dtypes)
 # --- save a fast-loading copy for every future run ---
 df.to_parquet(r"data\processed\sku_demand_time_series_synthetic.parquet", index=False)
 print("Saved fast-loading copy to data/processed/")
+
+# --- clean and validate data ---
+
+# check for duplicate rows: each sku + warehouse + week should appear only once
+duplicate_count = df.duplicated(subset=["sku_id", "warehouse_id", "date"]).sum()
+print("Duplicate rows:", duplicate_count)
+
+# check for missing values in any column
+print("Missing values per column:")
+print(df.isna().sum())
+
+# check for impossible values — demand can't be negative
+negative_demand = (df["units_sold"] < 0).sum()
+print("Rows with negative units_sold:", negative_demand)
+
+# convert text columns to "category" type — this uses less memory and
+# helps our model later understand these are fixed groups, not free text
+category_columns = ["sku_id", "category", "brand", "colour", "tip_size", "warehouse_id"]
+for col in category_columns:
+    df[col] = df[col].astype("category")
+
+print("Data cleaning checks complete.")

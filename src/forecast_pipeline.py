@@ -128,3 +128,35 @@ print("Training rows:", X_train.shape[0])
 print("Testing rows:", X_test.shape[0])
 print("Training date range:", train["date"].min(), "to", train["date"].max())
 print("Testing date range:", test["date"].min(), "to", test["date"].max())
+
+# --- Train the model ---
+
+import lightgbm as lgb
+
+# tell LightGBM which columns are categories (groups), not numbers to do math on
+cat_features = ["sku_id", "category", "brand", "colour", "tip_size", "warehouse_id"]
+
+train_set = lgb.Dataset(X_train, label=y_train, categorical_feature=cat_features)
+valid_set = lgb.Dataset(X_test, label=y_test, categorical_feature=cat_features, reference=train_set)
+
+params = {
+    "objective": "regression",   # we're predicting a number (units sold), not a category
+    "metric": "mae",             # how we are measuring "being wrong" while training
+    "learning_rate": 0.05,       # how big a step the model takes while learning each round
+    "num_leaves": 64,            # how complex each individual tree in the model is allowed to be
+    "verbose": -1,                # keep the console output clean
+}
+
+model = lgb.train(
+    params,
+    train_set,
+    num_boost_round=1000,        # train up to 1000 rounds...
+    valid_sets=[valid_set],
+    callbacks=[
+        lgb.early_stopping(stopping_rounds=50),   # ...but stop early if it stops improving for 50 rounds straight
+        lgb.log_evaluation(period=100)            # print progress every 100 rounds
+    ]
+)
+
+print("Best iteration:", model.best_iteration)
+print("Best validation MAE:", model.best_score["valid_0"]["l1"])

@@ -77,3 +77,32 @@ df[attribute_cols] = df.groupby(["sku_id", "warehouse_id"], observed=True)[attri
 print("Rows after filling gaps:", df.shape[0])
 gap_check = df.groupby(["sku_id", "warehouse_id"], observed=True)["date"].nunique()
 print("Combinations still missing weeks:", (gap_check < len(full_date_range)).sum())
+
+# --- Build calendar and lag/rolling features ---
+
+df["year"] = df["date"].dt.year
+df["week_of_year"] = df["date"].dt.isocalendar().week.astype(int)
+df["month"] = df["date"].dt.month
+
+# group by the unique series (one sku in one warehouse) before lagging —
+# this stops SKU0001's history from leaking into SKU0002's lag features
+grp = df.groupby(["sku_id", "warehouse_id"], observed=True)["units_sold"]
+
+df["lag_1"] = grp.shift(1)     # demand 1 week ago
+df["lag_2"] = grp.shift(2)     # demand 2 weeks ago
+df["lag_4"] = grp.shift(4)     # demand 4 weeks ago
+df["lag_12"] = grp.shift(12)   # demand 12 weeks ago (roughly a quarter)
+df["lag_52"] = grp.shift(52)   # demand 52 weeks ago (this time last year — the yearly seasonality signal)
+
+# rolling averages smooth out noise and show recent momentum
+df["roll_mean_4"] = grp.transform(lambda s: s.shift(1).rolling(4).mean())
+df["roll_mean_12"] = grp.transform(lambda s: s.shift(1).rolling(12).mean())
+
+# the earliest rows of each series don't have a full year of lag history yet — drop them
+rows_before = df.shape[0]
+df = df.dropna(subset=["lag_52"]).reset_index(drop=True)
+rows_after = df.shape[0]
+
+print("Rows before dropping incomplete history:", rows_before)
+print("Rows after dropping incomplete history:", rows_after)
+print(df[["date", "sku_id", "warehouse_id", "units_sold", "lag_1", "lag_52", "roll_mean_4"]].head(10))

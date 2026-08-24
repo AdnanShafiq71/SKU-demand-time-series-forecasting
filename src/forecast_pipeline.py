@@ -144,3 +144,61 @@ wmape_naive_last_year = np.abs(y_test - naive_last_year).sum() / y_test.sum()
 print(f"\nNaive (last week) WMAPE:  {wmape_naive_last_week:.2%}")
 print(f"Naive (last year) WMAPE:  {wmape_naive_last_year:.2%}")
 print(f"Our model WMAPE:          {wmape:.2%}")
+
+# --- Recursive future forecast ---
+
+horizon = 12   # how many weeks ahead we're forecasting
+history = df.copy()   # working copy we'll keep growing with each new prediction
+last_date = history["date"].max()
+future_rows = []
+
+for step in range(1, horizon + 1):
+    next_date = last_date + pd.Timedelta(weeks=step)
+
+    # start next week's rows from each series' most recent known row
+    latest = (
+        history.sort_values("date")
+        .groupby(["sku_id", "warehouse_id"], observed=True)
+        .tail(1)
+        .copy()
+    )
+    latest["date"] = next_date
+    latest["year"] = next_date.year
+    latest["week_of_year"] = next_date.isocalendar().week
+    latest["month"] = next_date.month
+    latest["week_sin"] = np.sin(2 * np.pi * latest["week_of_year"] / 52)
+    latest["week_cos"] = np.cos(2 * np.pi * latest["week_of_year"] / 52)
+    # price_try and promotion just carry forward the last known value here —
+    # swap this for a real future price/promo plan if you have one
+
+    # look up lag values from history (now including any predictions I've already made)
+    lookup = history.set_index(["sku_id", "warehouse_id", "date"])["units_sold"]
+
+    def get_lag(row, weeks_back):
+        key = (row["sku_id"], row["warehouse_id"], row["date"] - pd.Timedelta(weeks=weeks_back))
+        return lookup.get(key, np.nan)
+
+    for w in [1, 2, 4, 12, 52]:
+        latest[f"lag_{w}"] = latest.apply(lambda r: get_lag(r, w), axis=1)
+
+    # rolling stats from the most recent weeks in history
+    recent = history[history["date"] > next_date - pd.Timedelta(weeks=13)]
+    roll4 = recent.groupby(["sku_id", "warehouse_id"], observed=True)["units_sold"].apply(lambda s: s.tail(4).mean())
+    roll12 = recent.groupby(["sku_id", "warehouse_id"], observed=True)["units_sold"].apply(lambda s: s.tail(12).mean())
+    rollstd4 = recent.groupby(["sku_id", "warehouse_id"], observed=True)["units_sold"].apply(lambda s: s.tail(4).std())
+
+    latest = latest.set_index(["sku_id", "warehouse_id"])
+    latest["roll_mean_4"] = roll4
+    latest["roll_mean_12"] = roll12
+    latest["roll_std_4"] = rollstd4
+    latest = latest.reset_index()
+
+    # predict this week, clip negatives, then treat it as "real" for the next loop
+    latest["units_sold"] = np.clip(model.predict(latest[feature_cols]), 0, None)
+
+    future_rows.append(latest)
+    history = pd.concat([history, latest], ignore_index=True)
+
+future_df = pd.concat(future_rows, ignore_index=True)
+print("Future forecast rows generated:", future_df.shape[0])
+print(future_df[["date", "sku_id", "warehouse_id", "units_sold"]].head(15))

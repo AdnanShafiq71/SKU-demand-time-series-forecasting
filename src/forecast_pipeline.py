@@ -106,3 +106,25 @@ rows_after = df.shape[0]
 print("Rows before dropping incomplete history:", rows_before)
 print("Rows after dropping incomplete history:", rows_after)
 print(df[["date", "sku_id", "warehouse_id", "units_sold", "lag_1", "lag_52", "roll_mean_4"]].head(10))
+
+# --- Train/test split by date ---
+
+cutoff_date = df["date"].max() - pd.Timedelta(weeks=12)   # hold back the last 12 weeks
+
+train = df[df["date"] <= cutoff_date]
+test = df[df["date"] > cutoff_date]
+
+feature_cols = [
+    "sku_id", "category", "brand", "colour", "tip_size", "warehouse_id",
+    "price_try", "promotion", "year", "week_of_year", "month",
+    "lag_1", "lag_2", "lag_4", "lag_12", "lag_52", "roll_mean_4", "roll_mean_12"
+]
+target_col = "units_sold"
+
+X_train, y_train = train[feature_cols], train[target_col]
+X_test, y_test = test[feature_cols], test[target_col]
+
+print("Training rows:", X_train.shape[0])
+print("Testing rows:", X_test.shape[0])
+print("Training date range:", train["date"].min(), "to", train["date"].max())
+print("Testing date range:", test["date"].min(), "to", test["date"].max())

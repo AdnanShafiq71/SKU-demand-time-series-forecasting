@@ -202,3 +202,34 @@ for step in range(1, horizon + 1):
 future_df = pd.concat(future_rows, ignore_index=True)
 print("Future forecast rows generated:", future_df.shape[0])
 print(future_df[["date", "sku_id", "warehouse_id", "units_sold"]].head(15))
+
+# --- Plotting one sku/warehouse to actually see the forecast ---
+import matplotlib.pyplot as plt
+
+sample_sku = "SKU0001"
+sample_wh = "WH01"
+
+hist_sample = df[(df["sku_id"] == sample_sku) & (df["warehouse_id"] == sample_wh)]
+future_sample = future_df[(future_df["sku_id"] == sample_sku) & (future_df["warehouse_id"] == sample_wh)]
+
+plt.figure(figsize=(10, 4))
+plt.plot(hist_sample["date"], hist_sample["units_sold"], label="History")
+# stitch the last real point onto the front of the forecast line so it
+# actually looks connected on the chart, rather than floating separately
+last_real_point = hist_sample.tail(1)
+connected_future = pd.concat([last_real_point, future_sample])
+plt.plot(connected_future["date"], connected_future["units_sold"], label="Forecast", linestyle="--")
+plt.legend()
+plt.title(f"{sample_sku} @ {sample_wh} — demand forecast")
+plt.xlabel("Week")
+plt.ylabel("Units sold")
+plt.savefig("outputs/charts/sample_forecast.png", dpi=150, bbox_inches="tight")
+plt.show()
+print("Saved chart to outputs/charts/sample_forecast.png")
+
+# --- Exporting final forecast ---
+output = future_df[["date", "sku_id", "warehouse_id", "units_sold"]].rename(
+    columns={"units_sold": "forecast_units"}
+)
+output.to_csv("outputs/forecasts/pen_demand_forecast_12wk.csv", index=False)
+print("Saved forecast for", output[["sku_id", "warehouse_id"]].drop_duplicates().shape[0], "series")

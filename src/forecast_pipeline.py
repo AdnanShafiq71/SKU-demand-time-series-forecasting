@@ -1,7 +1,9 @@
 import pandas as pd
 
 # --- load raw data ---
-df = pd.read_excel(r"data\raw\sku_demand_time_series_synthetic.xlsx")
+
+# --- from now on, load the fast Parquet copy instead ---
+df = pd.read_parquet(r"data\processed\sku_demand_time_series_synthetic.parquet")
 
 # --- anonymize brand names before anything else touches the data ---
 unique_brands = sorted(df["brand"].unique())

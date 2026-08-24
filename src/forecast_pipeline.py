@@ -160,3 +160,44 @@ model = lgb.train(
 
 print("Best iteration:", model.best_iteration)
 print("Best validation MAE:", model.best_score["valid_0"]["l1"])
+
+# --- Evaluate accuracy and check feature importance ---
+
+import numpy as np
+
+preds = model.predict(X_test)
+preds = np.clip(preds, 0, None)   # demand can't be negative, so clip any stray negative predictions to 0
+
+# WMAPE = weighted mean absolute percentage error
+# unlike plain MAPE, it doesn't explode on near-zero-demand weeks, since it
+# weighs errors by total volume rather than averaging raw percentages
+wmape = np.abs(y_test - preds).sum() / y_test.sum()
+print(f"Overall WMAPE: {wmape:.2%}")
+
+# break it down by category, to see if some pen types forecast better than others
+results = test.copy()
+results["prediction"] = preds
+category_wmape = results.groupby("category", observed=True).apply(
+    lambda g: np.abs(g["units_sold"] - g["prediction"]).sum() / g["units_sold"].sum()
+)
+print("\nWMAPE by category:")
+print(category_wmape.sort_values())
+
+# which features actually drove the predictions?
+importance = pd.Series(model.feature_importance(), index=feature_cols).sort_values(ascending=False)
+print("\nFeature importance:")
+print(importance)
+
+# --- Check: compare the model against simple naive forecasts ---
+# if our trained model can't beat these simple guesses, something's wrong.
+# if it does beat them, the remaining error is likely to be just real noise in the data.
+
+naive_last_week = test["lag_1"]          # guess: "this week = last week"
+naive_last_year = test["lag_52"]          # guess: "this week = same week last year"
+
+wmape_naive_last_week = np.abs(y_test - naive_last_week).sum() / y_test.sum()
+wmape_naive_last_year = np.abs(y_test - naive_last_year).sum() / y_test.sum()
+
+print(f"Naive (last week) WMAPE:  {wmape_naive_last_week:.2%}")
+print(f"Naive (last year) WMAPE:  {wmape_naive_last_year:.2%}")
+print(f"Our model WMAPE:          {wmape:.2%}")
